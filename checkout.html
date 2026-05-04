@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PLATACO — Checkout</title>
+<script src="config.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
+<!-- SDK de Stripe — SIEMPRE desde stripe.com, nunca local -->
+<script src="https://js.stripe.com/v3/"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--dark:#0a0a0a;--cream:#f8f5f0;--silver:#C0C0C0;--accent:#8a8a8a;--border:#ddd;--error:#c0392b;--success:#1a6b3c}
+body{font-family:'Jost',sans-serif;background:var(--cream);color:var(--dark);min-height:100vh}
+h1,h2,h3{font-family:'Cormorant Garamond',serif}
+
+header{background:var(--dark);color:white;padding:1rem 2rem;display:flex;align-items:center;gap:1rem}
+.logo{font-family:'Cormorant Garamond',serif;font-size:1.6rem;font-weight:300;letter-spacing:0.3em;color:var(--silver)}
+.logo span{font-style:italic;color:white}
+.back-btn{background:none;border:1px solid #444;color:white;padding:0.4rem 1rem;cursor:pointer;font-size:0.75rem;letter-spacing:0.15em;text-transform:uppercase}
+
+.checkout-layout{max-width:1100px;margin:0 auto;padding:3rem 2rem;display:grid;grid-template-columns:1fr 380px;gap:3rem}
+@media(max-width:768px){.checkout-layout{grid-template-columns:1fr;padding:1.5rem}}
+
+/* ORDER SUMMARY */
+.order-summary{background:white;padding:2rem}
+.summary-title{font-family:'Cormorant Garamond',serif;font-size:1.6rem;font-weight:400;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid var(--border)}
+.summary-item{display:flex;align-items:center;gap:1rem;padding:0.8rem 0;border-bottom:1px solid var(--border)}
+.item-img{width:56px;height:56px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:1.5rem;flex-shrink:0}
+.item-info{flex:1}
+.item-name{font-size:0.9rem;margin-bottom:0.2rem}
+.item-detail{font-size:0.75rem;color:var(--accent)}
+.item-price{font-family:'Cormorant Garamond',serif;font-size:1.1rem;white-space:nowrap}
+.summary-totals{margin-top:1.2rem}
+.total-row{display:flex;justify-content:space-between;padding:0.4rem 0;font-size:0.85rem}
+.total-row.shipping .val{color:var(--success)}
+.total-row.grand{border-top:1px solid var(--dark);margin-top:0.5rem;padding-top:0.8rem;font-size:1rem;font-weight:500}
+.total-row.grand .val{font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:300}
+
+/* CURRENCY SELECTOR */
+.currency-bar{display:flex;gap:0.5rem;margin-bottom:1.5rem;flex-wrap:wrap}
+.currency-btn{background:none;border:1px solid var(--border);padding:0.3rem 0.8rem;cursor:pointer;font-size:0.75rem;transition:all 0.2s}
+.currency-btn.active{background:var(--dark);color:white;border-color:var(--dark)}
+
+/* FORM */
+.checkout-form{display:flex;flex-direction:column;gap:2rem}
+.form-section{background:white;padding:2rem}
+.section-title{font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:400;margin-bottom:1.2rem;display:flex;align-items:center;gap:0.5rem}
+.step-num{width:24px;height:24px;background:var(--dark);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-family:'Jost',sans-serif}
+
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.field-grid.single{grid-template-columns:1fr}
+.field{display:flex;flex-direction:column;gap:0.4rem}
+.field label{font-size:0.72rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--accent)}
+.field input,.field select{border:1px solid var(--border);padding:0.7rem 0.9rem;font-family:'Jost',sans-serif;font-size:0.9rem;outline:none;background:white;transition:border 0.2s}
+.field input:focus,.field select:focus{border-color:var(--dark)}
+.field-error{font-size:0.75rem;color:var(--error)}
+
+/* STRIPE ELEMENT */
+#stripe-card-element{border:1px solid var(--border);padding:0.8rem 0.9rem;background:white;transition:border 0.2s}
+#stripe-card-element.StripeElement--focus{border-color:var(--dark)}
+#stripe-card-element.StripeElement--invalid{border-color:var(--error)}
+#card-errors{color:var(--error);font-size:0.8rem;margin-top:0.5rem;min-height:1rem}
+
+/* TEST CARDS HELPER */
+.test-card-note{background:#f0f7ff;border:1px solid #cde;padding:0.8rem;font-size:0.78rem;margin-bottom:1rem;color:#1a4a7a}
+.test-card-note strong{display:block;margin-bottom:0.3rem}
+
+/* SUBMIT */
+.submit-btn{width:100%;background:var(--dark);color:white;border:none;padding:1.1rem;cursor:pointer;font-family:'Jost',sans-serif;font-size:0.85rem;letter-spacing:0.3em;text-transform:uppercase;transition:background 0.3s;position:relative}
+.submit-btn:hover:not(:disabled){background:#333}
+.submit-btn:disabled{opacity:0.6;cursor:not-allowed}
+.spinner{display:none;width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:white;border-radius:50%;animation:spin 0.7s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.secure-badges{display:flex;align-items:center;justify-content:center;gap:1rem;margin-top:0.8rem;font-size:0.72rem;color:var(--accent)}
+
+/* SUCCESS / ERROR SCREENS */
+.result-screen{display:none;text-align:center;padding:4rem 2rem;background:white;max-width:500px;margin:4rem auto}
+.result-screen.show{display:block}
+.result-icon{font-size:3rem;margin-bottom:1rem}
+.result-title{font-family:'Cormorant Garamond',serif;font-size:2rem;margin-bottom:1rem}
+.result-text{font-size:0.9rem;color:var(--accent);margin-bottom:2rem;line-height:1.8}
+.result-btn{background:var(--dark);color:white;border:none;padding:0.8rem 2rem;cursor:pointer;font-size:0.8rem;letter-spacing:0.2em;text-transform:uppercase}
+
+/* SPINNER OVERLAY */
+.loading-overlay{display:none;position:fixed;inset:0;background:rgba(255,255,255,0.85);z-index:100;align-items:center;justify-content:center;flex-direction:column;gap:1rem}
+.loading-overlay.show{display:flex}
+.big-spinner{width:40px;height:40px;border:3px solid #ddd;border-top-color:var(--dark);border-radius:50%;animation:spin 0.8s linear infinite}
+.loading-text{font-size:0.85rem;letter-spacing:0.15em;color:var(--accent)}
+
+/* ── RESPONSIVE ─────────────────────────────────────────── */
+
+/* Tablet */
+@media(max-width:900px){
+  .checkout-layout{grid-template-columns:1fr;padding:2rem 1.5rem;gap:2rem}
+  /* Mover resumen arriba en tablet */
+  .checkout-layout > div:last-child{order:-1}
+}
+
+/* Mobile */
+@media(max-width:600px){
+  header{padding:0.8rem 1rem;gap:0.7rem}
+  .logo{font-size:1.3rem}
+  .back-btn{padding:0.35rem 0.7rem;font-size:0.7rem}
+
+  .checkout-layout{padding:1rem;gap:1.5rem}
+
+  .form-section{padding:1.2rem}
+  .order-summary{padding:1.2rem}
+
+  /* Campos de formulario en columna única en móvil */
+  .field-grid{grid-template-columns:1fr !important}
+
+  .section-title{font-size:1.1rem}
+  .summary-title{font-size:1.3rem}
+
+  .currency-bar{gap:0.4rem}
+  .currency-btn{padding:0.3rem 0.55rem;font-size:0.7rem}
+
+  .submit-btn{padding:0.9rem;font-size:0.8rem}
+
+  .secure-badges{flex-wrap:wrap;gap:0.5rem;font-size:0.68rem}
+
+  .result-screen{margin:2rem 1rem;padding:2.5rem 1.5rem}
+  .result-title{font-size:1.6rem}
+
+  .test-card-note{font-size:0.74rem}
+  .test-card-note code{font-size:0.78rem;word-break:break-all}
+
+  .item-price{font-size:0.95rem}
+}
+
+@media(max-width:380px){
+  .checkout-layout{padding:0.8rem}
+  .form-section{padding:1rem}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <button class="back-btn" onclick="history.back()">← Volver</button>
+  <div class="logo">PLATA<span>&</span>CO</div>
+</header>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="big-spinner"></div>
+  <p class="loading-text">Procesando tu pago...</p>
+</div>
+
+<!-- PANTALLA DE ÉXITO -->
+<div class="result-screen" id="successScreen">
+  <div class="result-icon">✦</div>
+  <h2 class="result-title">Pedido confirmado</h2>
+  <p class="result-text">Gracias por tu compra. Recibirás un email de confirmación en breve con los detalles de tu pedido y la información de envío.</p>
+  <p id="successOrderId" style="font-size:0.8rem;color:var(--accent);margin-bottom:1.5rem"></p>
+  <button class="result-btn" onclick="location.href='index.html'">Seguir comprando</button>
+</div>
+
+<!-- PANTALLA DE ERROR -->
+<div class="result-screen" id="errorScreen">
+  <div class="result-icon" style="color:#c0392b">✕</div>
+  <h2 class="result-title">Pago no procesado</h2>
+  <p class="result-text" id="errorMessage">Hubo un problema al procesar tu pago. Por favor comprueba los datos de tu tarjeta e inténtalo de nuevo.</p>
+  <button class="result-btn" onclick="showCheckout()">Intentar de nuevo</button>
+</div>
+
+<!-- CHECKOUT PRINCIPAL -->
+<div class="checkout-layout" id="checkoutLayout">
+
+  <!-- COLUMNA IZQUIERDA: Formulario -->
+  <div class="checkout-form">
+
+    <!-- SECCIÓN 1: Divisa -->
+    <div class="form-section">
+      <h2 class="section-title"><span class="step-num">1</span> Divisa de pago</h2>
+      <div class="currency-bar">
+        <button class="currency-btn active" onclick="selectCurrency('EUR','€',this)">EUR €</button>
+        <button class="currency-btn" onclick="selectCurrency('USD','$',this)">USD $</button>
+        <button class="currency-btn" onclick="selectCurrency('GBP','£',this)">GBP £</button>
+        <button class="currency-btn" onclick="selectCurrency('JPY','¥',this)">JPY ¥</button>
+        <button class="currency-btn" onclick="selectCurrency('CAD','CA$',this)">CAD</button>
+        <button class="currency-btn" onclick="selectCurrency('CHF','Fr',this)">CHF</button>
+      </div>
+      <p style="font-size:0.78rem;color:var(--accent)">El pago se realizará en tu divisa seleccionada. Los tipos de cambio son orientativos.</p>
+    </div>
+
+    <!-- SECCIÓN 2: Datos de envío -->
+    <div class="form-section">
+      <h2 class="section-title"><span class="step-num">2</span> Dirección de envío</h2>
+      <div class="field-grid" style="margin-bottom:1rem">
+        <div class="field">
+          <label>Nombre</label>
+          <input type="text" id="firstName" placeholder="María" required>
+        </div>
+        <div class="field">
+          <label>Apellidos</label>
+          <input type="text" id="lastName" placeholder="García López" required>
+        </div>
+      </div>
+      <div class="field-grid single" style="margin-bottom:1rem">
+        <div class="field">
+          <label>Email (para confirmación del pedido)</label>
+          <input type="email" id="email" placeholder="maria@email.com" required>
+        </div>
+      </div>
+      <div class="field-grid single" style="margin-bottom:1rem">
+        <div class="field">
+          <label>Dirección</label>
+          <input type="text" id="address1" placeholder="Calle Mayor, 42, 3ºA" required>
+        </div>
+      </div>
+      <div class="field-grid" style="margin-bottom:1rem">
+        <div class="field">
+          <label>Ciudad</label>
+          <input type="text" id="city" placeholder="Madrid" required>
+        </div>
+        <div class="field">
+          <label>Código postal</label>
+          <input type="text" id="postalCode" placeholder="28001" required>
+        </div>
+      </div>
+      <div class="field-grid">
+        <div class="field">
+          <label>País</label>
+          <select id="country">
+            <option value="ES">España</option>
+            <option value="FR">Francia</option>
+            <option value="DE">Alemania</option>
+            <option value="IT">Italia</option>
+            <option value="PT">Portugal</option>
+            <option value="GB">Reino Unido</option>
+            <option value="US">Estados Unidos</option>
+            <option value="MX">México</option>
+            <option value="AR">Argentina</option>
+            <option value="JP">Japón</option>
+            <option value="AU">Australia</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Teléfono (opcional)</label>
+          <input type="tel" id="phone" placeholder="+34 600 000 000">
+        </div>
+      </div>
+    </div>
+
+    <!-- SECCIÓN 3: Pago con Stripe -->
+    <div class="form-section">
+      <h2 class="section-title"><span class="step-num">3</span> Datos de pago</h2>
+
+      <!-- Nota de tarjetas de prueba (eliminar en producción) -->
+      <div class="test-card-note">
+        <strong>🧪 Modo de prueba — Tarjetas de test de Stripe:</strong>
+        Tarjeta correcta: <code>4242 4242 4242 4242</code><br>
+        Pago rechazado: <code>4000 0000 0000 0002</code><br>
+        Fecha: cualquier futura · CVV: cualquier 3 dígitos
+      </div>
+
+      <div id="stripe-card-element"></div>
+      <div id="card-errors" role="alert"></div>
+
+      <button class="submit-btn" id="submitBtn" style="margin-top:1.5rem" onclick="handlePayment()">
+        <span id="btnText">Pagar ahora</span>
+        <div class="spinner" id="btnSpinner"></div>
+      </button>
+      <div class="secure-badges">
+        <span>🔒 SSL seguro</span>
+        <span>·</span>
+        <span>Powered by Stripe</span>
+        <span>·</span>
+        <span>PCI DSS</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLUMNA DERECHA: Resumen del pedido -->
+  <div>
+    <div class="order-summary">
+      <h2 class="summary-title">Tu pedido</h2>
+      <div id="summaryItems">
+        <!-- Items del carrito inyectados por JS -->
+      </div>
+      <div class="summary-totals">
+        <div class="total-row">
+          <span>Subtotal</span>
+          <span class="val" id="summarySubtotal">—</span>
+        </div>
+        <div class="total-row shipping">
+          <span>Envío</span>
+          <span class="val" id="summaryShipping">—</span>
+        </div>
+        <div class="total-row grand">
+          <span>Total</span>
+          <span class="val" id="summaryTotal">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API_URL = window.PLATACO_API_URL || 'http://localhost:4000/api';
+const RATES = { EUR:1, USD:1.08, GBP:0.86, JPY:163.2, CAD:1.47, CHF:0.97 };
+const SYMBOLS = { EUR:'€', USD:'$', GBP:'£', JPY:'¥', CAD:'CA$', CHF:'Fr' };
+
+let currency = 'EUR';
+let currSymbol = '€';
+let stripePaymentIntentId = null;
+let stripeClientSecret = null;
+let stripeCardElement = null;
+let stripe = null;
+
+const CART_DEMO = JSON.parse(localStorage.getItem('plataco_cart') || '[]');
+
+function fmtPrice(eur) {
+  const v = eur * RATES[currency];
+  if (currency === 'JPY') return `${Math.round(v).toLocaleString()} ¥`;
+  return `${currSymbol}${v.toFixed(2)}`;
+}
+
+function renderSummary() {
+  const subtotal = CART_DEMO.reduce((s, i) => s + i.unit_price_eur * i.quantity, 0);
+  const shipping = subtotal >= 80 ? 0 : 6.95;
+  const total = subtotal + shipping;
+
+  document.getElementById('summaryItems').innerHTML = CART_DEMO.map(item => `
+    <div class="summary-item">
+      <div class="item-img">${item.emoji || '✦'}</div>
+      <div class="item-info">
+        <p class="item-name">${item.product_name}</p>
+        <p class="item-detail">${item.variant_name ? item.variant_name + ' · ' : ''}Cantidad: ${item.quantity}</p>
+      </div>
+      <span class="item-price">${fmtPrice(item.unit_price_eur * item.quantity)}</span>
+    </div>
+  `).join('');
+
+  document.getElementById('summarySubtotal').textContent = fmtPrice(subtotal);
+  document.getElementById('summaryShipping').textContent = shipping === 0 ? 'Gratis' : fmtPrice(shipping);
+  document.getElementById('summaryTotal').textContent = fmtPrice(total);
+  document.getElementById('submitBtn').querySelector('#btnText').textContent = `Pagar ${fmtPrice(total)}`;
+}
+
+function selectCurrency(c, sym, btn) {
+  currency = c; currSymbol = sym;
+  document.querySelectorAll('.currency-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderSummary();
+}
+
+// ── Validar formulario ─────────────────────────────────────
+function validateForm() {
+  const fields = {
+    firstName:  document.getElementById('firstName').value.trim(),
+    lastName:   document.getElementById('lastName').value.trim(),
+    email:      document.getElementById('email').value.trim(),
+    address1:   document.getElementById('address1').value.trim(),
+    city:       document.getElementById('city').value.trim(),
+    postalCode: document.getElementById('postalCode').value.trim(),
+    country:    document.getElementById('country').value,
+  };
+  for (const [k, v] of Object.entries(fields)) {
+    if (!v) { alert(`Por favor completa todos los campos obligatorios.`); return null; }
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fields.email)) {
+    alert('Por favor introduce un email válido.'); return null;
+  }
+  return fields;
+}
+
+// ── Flujo de pago ──────────────────────────────────────────
+async function handlePayment() {
+  if (!stripe || !stripeCardElement) {
+    showError('Stripe no se pudo inicializar. Revisa STRIPE_PUBLISHABLE_KEY en el backend.');
+    return;
+  }
+
+  const formData = validateForm();
+  if (!formData) return;
+
+  setLoading(true);
+
+  try {
+    // PASO 1: Crear PaymentIntent en nuestro backend
+    // El backend verifica los precios reales desde la BD
+    const intentRes = await fetch(`${API_URL}/payments/create-intent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: CART_DEMO.map(i => ({
+          product_id: i.product_id,
+          variant_id: i.variant_id || null,
+          quantity: i.quantity,
+        })),
+        currency,
+        shipping_address: {
+          first_name: formData.firstName,
+          last_name:  formData.lastName,
+          address1:   formData.address1,
+          city:       formData.city,
+          postal_code: formData.postalCode,
+          country:    formData.country,
+        },
+      }),
+    });
+
+    const intentData = await intentRes.json();
+    if (!intentRes.ok) throw new Error(intentData.error || 'Error al iniciar el pago');
+
+    stripeClientSecret = intentData.client_secret;
+    stripePaymentIntentId = intentData.payment_intent_id;
+
+    // PASO 2: Confirmar el pago con la tarjeta introducida en Stripe.js
+    // Stripe.js nunca envía los datos de tarjeta a nuestro servidor.
+    const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(
+      stripeClientSecret,
+      {
+        payment_method: {
+          card: stripeCardElement,
+          billing_details: {
+            name: `${formData.firstName} ${formData.lastName}`,
+            email: formData.email,
+          },
+        },
+      }
+    );
+
+    if (stripeError) {
+      document.getElementById('card-errors').textContent = stripeError.message;
+      setLoading(false);
+      return;
+    }
+
+    if (paymentIntent.status === 'succeeded') {
+      // PASO 3: Confirmar el pedido en nuestro backend
+      const confirmRes = await fetch(`${API_URL}/payments/confirm-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payment_intent_id: stripePaymentIntentId,
+          guest_email: formData.email,
+          shipping_address: {
+            first_name:  formData.firstName,
+            last_name:   formData.lastName,
+            address1:    formData.address1,
+            city:        formData.city,
+            postal_code: formData.postalCode,
+            country:     formData.country,
+            phone:       document.getElementById('phone').value.trim() || null,
+          },
+        }),
+      });
+
+      const confirmData = await confirmRes.json();
+      if (!confirmRes.ok) throw new Error(confirmData.error || 'Error al confirmar el pedido');
+
+      // ✅ Éxito
+      setLoading(false);
+      showSuccess(confirmData.order_id);
+    }
+
+  } catch (err) {
+    setLoading(false);
+    showError(err.message);
+  }
+}
+
+// ── UI helpers ─────────────────────────────────────────────
+function setLoading(on) {
+  const btn = document.getElementById('submitBtn');
+  const spinner = document.getElementById('btnSpinner');
+  const btnText = document.getElementById('btnText');
+  const overlay = document.getElementById('loadingOverlay');
+  btn.disabled = on;
+  spinner.style.display = on ? 'block' : 'none';
+  btnText.style.display = on ? 'none' : 'block';
+  overlay.classList.toggle('show', on);
+}
+
+function showSuccess(orderId) {
+  localStorage.removeItem('plataco_cart');
+  document.getElementById('checkoutLayout').style.display = 'none';
+  document.getElementById('successScreen').classList.add('show');
+  if (orderId) {
+    document.getElementById('successOrderId').textContent = `Número de pedido: ${orderId}`;
+  }
+}
+
+function showError(msg) {
+  document.getElementById('checkoutLayout').style.display = 'none';
+  document.getElementById('errorMessage').textContent = msg || 'Error procesando el pago.';
+  document.getElementById('errorScreen').classList.add('show');
+}
+
+function showCheckout() {
+  document.getElementById('errorScreen').classList.remove('show');
+  document.getElementById('checkoutLayout').style.display = 'grid';
+}
+
+async function initStripe(){
+  // Try to get key from backend config endpoint
+  let stripePk = window.PLATACO_STRIPE_PK || null;
+  
+  if (!stripePk) {
+    try {
+      const configRes = await fetch(`${API_URL}/config`);
+      if (configRes.ok) {
+        const config = await configRes.json();
+        stripePk = config.stripe_publishable_key;
+      }
+    } catch(e) {
+      console.warn('Could not fetch config from backend:', e);
+    }
+  }
+
+  if (!stripePk) {
+    throw new Error('Falta configurar STRIPE_PUBLISHABLE_KEY. Añádela en Railway → Variables.');
+  }
+
+  stripe = Stripe(stripePk);
+  const stripeElements = stripe.elements();
+  stripeCardElement = stripeElements.create('card', {
+    style: {
+      base: {
+        fontFamily: '"Jost", sans-serif',
+        fontSize: '15px',
+        color: '#0a0a0a',
+        '::placeholder': { color: '#aaa' },
+      },
+      invalid: { color: '#c0392b' },
+    },
+    hidePostalCode: true,
+  });
+  stripeCardElement.mount('#stripe-card-element');
+  stripeCardElement.on('change', (e) => {
+    document.getElementById('card-errors').textContent = e.error ? e.error.message : '';
+  });
+}
+
+async function init(){
+  if (!CART_DEMO.length) {
+    showError('No hay productos en el carrito. Vuelve a la tienda para añadir productos.');
+    return;
+  }
+
+  renderSummary();
+  try {
+    await initStripe();
+  } catch (err) {
+    showError(err.message);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
