@@ -381,22 +381,18 @@
 <script>
 // ── Config ────────────────────────────────────────────────
 // CAMBIA ESTA URL por la URL de tu backend en Railway
-const API = (window.PLATACO_API || localStorage.getItem('plataco_api') || '').replace(/\/$/, '');
+const API = (window.PLATACO_API || localStorage.getItem('plataco_api') || 'https://plataco-backend-production.up.railway.app').replace(/\/$/, '');
 let TOKEN = localStorage.getItem('plataco_admin_token') || '';
 let currentUser = null;
 let allOrders = [];
 let currentPage = 1;
 const PER_PAGE = 20;
 
-// Prompt API URL on first load if not set
 function ensureApiUrl() {
-  if (!API) {
-    const url = prompt('Introduce la URL de tu backend Railway (ej: https://tu-app.up.railway.app):');
-    if (url) {
-      localStorage.setItem('plataco_api', url.trim().replace(/\/$/, ''));
-      location.reload();
-    }
-  }
+  // La URL del backend está configurada por defecto.
+  // Para cambiarla, abre la consola y ejecuta:
+  //   localStorage.setItem('plataco_api', 'https://tu-nueva-url.railway.app')
+  //   location.reload()
 }
 
 // ── Auth ──────────────────────────────────────────────────

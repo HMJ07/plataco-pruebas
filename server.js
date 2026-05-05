@@ -30,14 +30,19 @@ const allowedOrigins = (process.env.FRONTEND_URLS || process.env.FRONTEND_URL ||
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+console.log('✅ CORS orígenes permitidos:', allowedOrigins);
+
 app.use(cors({
   origin(origin, callback) {
-    // Allow tools like local static file preview (`Origin: null`) during development.
+    // Permitir peticiones sin origin (Postman, curl, SSR, etc.)
     if (!origin || origin === 'null') return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
+    console.warn(`🚫 CORS bloqueado: ${origin}`);
     return callback(new Error(`Origin no permitido por CORS: ${origin}`));
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(morgan('dev'));
 
@@ -63,6 +68,17 @@ app.get('/api/health', (req, res) => {
 app.get('/api/config', (req, res) => {
   res.json({
     stripe_publishable_key: process.env.STRIPE_PUBLISHABLE_KEY || null,
+  });
+});
+
+// ── Email diagnostics (solo para admin, o sin auth en dev) ──
+app.get('/api/email-status', (req, res) => {
+  res.json({
+    resend_configured: !!process.env.RESEND_API_KEY,
+    email_from: process.env.EMAIL_FROM || 'onboarding@resend.dev (por defecto)',
+    tip: process.env.RESEND_API_KEY
+      ? '✅ RESEND_API_KEY detectado'
+      : '⚠️ RESEND_API_KEY no configurado — los emails no se enviarán',
   });
 });
 
