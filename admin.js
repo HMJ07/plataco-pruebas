@@ -112,54 +112,50 @@ router.get('/orders', async (req, res) => {
   }
 });
 
-// ── GET /api/admin/orders/:id ──────────────────────────────
+// ── GET /api/admin/orders/:id — Detalle completo de un pedido ─
 router.get('/orders/:id', async (req, res) => {
   try {
-    const orderRes = await query(`
-      SELECT o.*,
-             u.email AS user_email, u.first_name AS user_first_name, u.last_name AS user_last_name,
-             p.status AS payment_status, p.card_brand, p.card_last4,
-             p.stripe_payment_intent_id, p.amount_eur AS payment_amount_eur,
-             p.stripe_charge_id
+    const orderResult = await query(`
+      SELECT
+        o.*,
+        u.email        AS user_email,
+        u.first_name   AS user_first_name,
+        u.last_name    AS user_last_name,
+        u.phone        AS user_phone,
+        p.status       AS payment_status,
+        p.stripe_payment_intent_id,
+        p.stripe_charge_id,
+        p.amount_eur   AS payment_amount_eur,
+        p.currency     AS payment_currency,
+        p.payment_method,
+        p.card_brand,
+        p.card_last4,
+        p.failure_message,
+        p.refund_amount_eur,
+        p.created_at   AS payment_created_at
       FROM orders o
-      LEFT JOIN users u ON u.id = o.user_id
+      LEFT JOIN users u    ON u.id = o.user_id
       LEFT JOIN payments p ON p.order_id = o.id
       WHERE o.id = $1
     `, [req.params.id]);
 
-    if (!orderRes.rows[0]) return res.status(404).json({ error: 'Pedido no encontrado' });
+    if (!orderResult.rows[0]) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
 
-    const itemsRes = await query(
-      'SELECT * FROM order_items WHERE order_id=$1 ORDER BY id',
-      [req.params.id]
-    );
+    const itemsResult = await query(`
+      SELECT
+        oi.*,
+        p.name         AS current_product_name,
+        p.slug         AS product_slug,
+        p.is_active    AS product_is_active
+      FROM order_items oi
+      LEFT JOIN products p ON p.id = oi.product_id
+      WHERE oi.order_id = $1
+      ORDER BY oi.created_at
+    `, [req.params.id]);
 
-    res.json({ ...orderRes.rows[0], items: itemsRes.rows });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ── GET /api/admin/customers ───────────────────────────────
-router.get('/customers', async (req, res) => {
-  try {
-    const { page = 1 } = req.query;
-    const limit = 20;
-    const offset = (page - 1) * limit;
-
-    const result = await query(`
-      SELECT u.id, u.email, u.first_name, u.last_name, u.created_at,
-             COUNT(o.id) AS total_orders,
-             COALESCE(SUM(o.total_eur), 0) AS total_spent
-      FROM users u
-      LEFT JOIN orders o ON o.user_id = u.id AND o.status NOT IN ('cancelled')
-      WHERE u.role = 'customer'
-      GROUP BY u.id
-      ORDER BY u.created_at DESC
-      LIMIT $1 OFFSET $2
-    `, [limit, offset]);
-
-    res.json(result.rows);
+    res.json({ ...orderResult.rows[0], items: itemsResult.rows });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

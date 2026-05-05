@@ -6,7 +6,6 @@ import { Router } from 'express';
 import Stripe from 'stripe';
 import { query, withTransaction } from './db.js';
 import { requireAuth } from './middleware_auth.js';
-import { sendOrderConfirmationEmail } from './email.js';
 
 const router = Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -65,21 +64,25 @@ router.post('/create-intent', async (req, res) => {
     const total_customer = Math.round(total_eur * rate * 100); // en centavos
 
     // Crear PaymentIntent en Stripe
+    // IMPORTANTE: Stripe limita cada campo de metadata a 500 chars.
+    // Guardamos solo IDs+cantidades+precio (compacto). El nombre del
+    // producto se recupera de la DB en confirm-order.
+    const compactItems = validatedItems.map(i => ({
+      pid: i.product_id,
+      vid: i.variant_id || null,
+      qty: i.quantity,
+      eur: i.unit_price_eur,
+    }));
+
     const paymentIntent = await stripe.paymentIntents.create({
       amount: total_customer,
       currency: currency.toLowerCase(),
       automatic_payment_methods: { enabled: true },
       metadata: {
-        items_json: JSON.stringify(validatedItems.map(i => ({
-          product_id:   i.product_id,
-          variant_id:   i.variant_id || null,
-          product_name: i.product_name,
-          quantity:     i.quantity,
-          unit_price_eur: i.unit_price_eur,
-        }))),
-        total_eur:    total_eur.toFixed(2),
-        shipping_eur: shipping_eur.toFixed(2),
-        currency:     currency,
+        items_compact: JSON.stringify(compactItems),
+        total_eur:     total_eur.toFixed(2),
+        shipping_eur:  shipping_eur.toFixed(2),
+        currency:      currency,
         exchange_rate: rate.toString(),
       },
     });
@@ -128,7 +131,31 @@ router.post('/confirm-order', async (req, res) => {
     }
 
     const meta = paymentIntent.metadata;
-    const items = JSON.parse(meta.items_json);
+    // Reconstruir items desde el formato compacto (items_compact)
+    // o desde el formato antiguo (items_json) para retrocompatibilidad
+    let items;
+    if (meta.items_compact) {
+      const compact = JSON.parse(meta.items_compact);
+      // Recuperar nombres de producto desde la DB
+      items = await Promise.all(compact.map(async (c) => {
+        const pr = await query('SELECT name FROM products WHERE id=$1', [c.pid]);
+        let variant_name = null;
+        if (c.vid) {
+          const vr = await query('SELECT name FROM product_variants WHERE id=$1', [c.vid]);
+          variant_name = vr.rows[0]?.name || null;
+        }
+        return {
+          product_id:    c.pid,
+          variant_id:    c.vid,
+          product_name:  pr.rows[0]?.name || 'Producto',
+          variant_name,
+          quantity:      c.qty,
+          unit_price_eur: c.eur,
+        };
+      }));
+    } else {
+      items = JSON.parse(meta.items_json);
+    }
     const total_eur = parseFloat(meta.total_eur);
     const shipping_eur = parseFloat(meta.shipping_eur);
     const subtotal_eur = total_eur - shipping_eur;
@@ -184,25 +211,6 @@ router.post('/confirm-order', async (req, res) => {
 
       return order;
     });
-
-    // Enviar email de confirmación (no bloqueante)
-    const emailDestino = guest_email || order.guest_email || null;
-    if (emailDestino || order.user_id) {
-      // Si hay user_id, buscar su email
-      let toEmail = emailDestino;
-      if (!toEmail && order.user_id) {
-        const userRes = await query('SELECT email FROM users WHERE id=$1', [order.user_id]);
-        toEmail = userRes.rows[0]?.email;
-      }
-
-      if (toEmail) {
-        // Recuperar items para el email
-        const itemsRes = await query('SELECT * FROM order_items WHERE order_id=$1', [order.id]);
-        sendOrderConfirmationEmail(order, itemsRes.rows, toEmail).catch(err =>
-          console.error('Error enviando email confirmación:', err)
-        );
-      }
-    }
 
     res.json({
       success: true,

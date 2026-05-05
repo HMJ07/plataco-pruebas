@@ -63,8 +63,7 @@ header{background:var(--dark);color:white;padding:1rem 2rem;display:flex;align-i
 #card-errors{color:var(--error);font-size:0.8rem;margin-top:0.5rem;min-height:1rem}
 
 /* TEST CARDS HELPER */
-.test-card-note{background:#f0f7ff;border:1px solid #cde;padding:0.8rem;font-size:0.78rem;margin-bottom:1rem;color:#1a4a7a}
-.test-card-note strong{display:block;margin-bottom:0.3rem}
+
 
 /* SUBMIT */
 .submit-btn{width:100%;background:var(--dark);color:white;border:none;padding:1.1rem;cursor:pointer;font-family:'Jost',sans-serif;font-size:0.85rem;letter-spacing:0.3em;text-transform:uppercase;transition:background 0.3s;position:relative}
@@ -124,8 +123,7 @@ header{background:var(--dark);color:white;padding:1rem 2rem;display:flex;align-i
   .result-screen{margin:2rem 1rem;padding:2.5rem 1.5rem}
   .result-title{font-size:1.6rem}
 
-  .test-card-note{font-size:0.74rem}
-  .test-card-note code{font-size:0.78rem;word-break:break-all}
+
 
   .item-price{font-size:0.95rem}
 }
@@ -247,14 +245,6 @@ header{background:var(--dark);color:white;padding:1rem 2rem;display:flex;align-i
     <!-- SECCIÓN 3: Pago con Stripe -->
     <div class="form-section">
       <h2 class="section-title"><span class="step-num">3</span> Datos de pago</h2>
-
-      <!-- Nota de tarjetas de prueba (eliminar en producción) -->
-      <div class="test-card-note">
-        <strong>🧪 Modo de prueba — Tarjetas de test de Stripe:</strong>
-        Tarjeta correcta: <code>4242 4242 4242 4242</code><br>
-        Pago rechazado: <code>4000 0000 0000 0002</code><br>
-        Fecha: cualquier futura · CVV: cualquier 3 dígitos
-      </div>
 
       <div id="stripe-card-element"></div>
       <div id="card-errors" role="alert"></div>
